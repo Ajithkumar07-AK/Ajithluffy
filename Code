@@ -1,0 +1,147 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag-chat"
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const question = $json[\"question\"];\nreturn [{ json: { question } }];"
+      },
+      "id": "2",
+      "name": "Extract Question",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://QDRANT_URL/collections/VECTOR_COLLECTION_NAME/points/search",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "{
+          \"vector\": {{ $json[\"question\"] }},
+          \"top\": 5,
+          \"with_payload\": true
+        }",
+        "headers": []
+      },
+      "id": "3",
+      "name": "Search Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const docs = items[0].json.result.map(r => r.payload.text).join(\"\\n---\\n\");\nconst question = $json[\"question\"];\n\nconst prompt = `You are an AI assistant. Use the following context to answer the user's question.\n\nContext:\n${docs}\n\nQuestion:\n${question}`;\n\nreturn [{ json: { prompt } }];"
+      },
+      "id": "4",
+      "name": "Format RAG Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "{
+          \"model\": \"gpt-4\",
+          \"messages\": [
+            { \"role\": \"system\", \"content\": \"You are a helpful assistant.\" },
+            { \"role\": \"user\", \"content\": {{ $json[\"prompt\"] }} }
+          ]
+        }",
+        "headerParametersJson": "{
+          \"Authorization\": \"Bearer YOUR_OPENAI_API_KEY\",
+          \"Content-Type\": \"application/json\"
+        }"
+      },
+      "id": "5",
+      "name": "Ask OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "6",
+      "name": "Return Answer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Question": {
+      "main": [
+        [
+          {
+            "node": "Search Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Format RAG Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format RAG Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ask OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Return Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
